@@ -1,0 +1,18 @@
+\chapter{Introduction}
+\section{Motivation}
+UML state machine is an effective tool for specification and designing complex systems. 
+Our primary focus is to present an automatic generator of UML state diagrams in Haskell for university E-learnings.
+Hence, we have done some limitations on the model, like the depth of a diagram will be no more than 4. 
+These customizations could be modified by changing the corresponding value in the \verb| randomSD| (details see section \ref{sec:generator}).
+
+The existing data type for the UML state diagram in the previous work \cite{jun_hao_tan} does not prevent abnormal or non-sense expressions, nor does the current model-checking functions rule them out. 
+Those illegal expressions may also cause execution crashes.
+Therefore, we need to define data structure properties and semantics more thoroughly for meaningful diagrams, then implement them in Haskell functions to automatically check violations in expressions.
+Moreover, when we implement the generator, if the produced random data could pass all the checkers, we can say that it will generate expressions that the drawing tool will not fail and fit the actual UML state diagram.
+
+
+\section{Outline}
+The rest of the paper is organized as follows: "\nameref{chap:background}" section presents background knowledge on the UML state diagram, our existing UML state diagram drawing tool and checkers, and the technique for random testing, QuickCheck, which is fundamental for the automatic generator.
+In the "\nameref{chap:implementation}" section, we illustrate the main constraints for model checking and how we realized the testing properties checking tool, the random generator in Haskell.
+ "\nameref{chap:evaluation}" section gives an analysis of fuzzing test, coverage of our test suites, shows results of our random state diagram generator, and discusses the errors found during testing.
+In the "\nameref{chap:Related and Future Work}" section, we summarize the possible aspects we might improve and focus on in the future and conclude our paper.

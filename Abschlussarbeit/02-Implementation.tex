@@ -1,0 +1,705 @@
+\chapter{Implementation}
+\label{chap:implementation}
+
+\section{Structural checking}
+\label{sec:properties}
+
+Except for the existing checkers, we still have many invariants that were not checked.
+
+\subsection{Diagram Representation}
+\label{sec:representation}
+
+
+First of all, the diagram expressions are either inputted by users or automatic generated must be valid.
+There are several rules to define whether it is a representable diagram for our UML State diagram drawing tool.
+The first two rules are already mentioned in section\ref{sec:existingCheckers}, which we will not further explain.
+
+
+\begin{itemize}
+\item  The outermost layer must be a state diagram instead of concurrent composite states.
+\end{itemize}
+
+
+\begin{itemize}
+\item Concurrent composite states must contain at least two state diagrams and no other type of pseudostates.
+\end{itemize}
+
+\begin{itemize}
+\item The beginning or endpoint of a transition should be a legal point. 
+\end{itemize}
+
+\begin{itemize}
+\item The beginning or endpoint of a transition should not be empty.
+\end{itemize}
+\begin{itemize}
+\item A transition should not go into or from a region of a concurrent composite state.
+
+\end{itemize}
+\begin{itemize}
+\item The initial pseudostate of a state diagram should be a legal point.
+\end{itemize}
+
+\begin{itemize}
+\item The initial pseudostate of a state diagram should not go into a region of a concurrent composite state.
+\end{itemize}
+
+We demonstrate some \verb|UMLStateDiagram| expressions that violate these properties.
+
+The starting point of transition \verb|Connection [5] [1] "a"| in the \verb|forCheckConnection| does not exist in the substates. 
+There are only two substates with labels 1 and  2, with no substates with label 5.
+It violates the rule that the connection points must be valid.
+\begin{verbatim}
+forCheckConnection :: UMLStateDiagram
+forCheckConnection = StateDiagram [a, b] 1 "" [
+                     Connection [5] [1] "a"] [2]
+  where
+    a = InnerMostState 1 "A" ""
+    b = InnerMostState 2 "B" ""
+\end{verbatim}
+
+In the \verb|forCheckEmptyConnPoint|, \verb|Connection[] [1] "a"| should not have a empty source state.
+\begin{verbatim}
+forCheckEmptyConnPoint :: UMLStateDiagram
+forCheckEmptyConnPoint = StateDiagram [a,b] 1 "" [
+                         Connection[] [1] "a"] [2]
+     where a = InnerMostState  1 "A" ""
+           b = InnerMostState  2 "B" ""
+\end{verbatim}
+
+The list \verb|[1,3]| in \verb|Connection [1,3] [2] ""| represents a state diagram with label 3 inside a concurrent composite state with label 1 which is a region.
+It is not allowed to have connections with regions .
+\begin{verbatim}
+forCheckConnFromToRegion ::UMLStateDiagram
+forCheckConnFromToRegion = StateDiagram [CombineDiagram [a,b] 1,
+  InnerMostState  2 "" ""] 0 "" [Connection [1,3] [2] ""] []
+    where
+      a = StateDiagram [InnerMostState 0 "" ""] 3 "" [] [0]
+      b = StateDiagram [InnerMostState 0 "" ""] 4 "" [] [0] 
+\end{verbatim}
+
+In the expression \verb|forCheckSubS|,the ininitial state \verb|[1,2]|  defined in a \verb|StateDiagram| does not exist.
+There is only one state with label 1.
+\begin{verbatim}
+forCheckSubS :: UMLStateDiagram
+forCheckSubS = StateDiagram [InnerMostState 1 "" ""] 1 "" [] [1,2] 
+\end{verbatim}
+
+The initial state \verb|[1,3]| in the example \verb|forCheckStartToRegion| denotes the \verb|StateDiagram| with label 3 inside a \verb|CombineDiagram| with label 1.
+It is also a region that is not permitted by the defining properties.
+\begin{verbatim}
+forCheckStartToRegion ::UMLStateDiagram
+forCheckStartToRegion = StateDiagram [CombineDiagram [a,b] 1,
+ InnerMostState  2 "" ""] 0 "" [Connection [1,3,0] [2] ""] [1,3]
+    where
+      a = StateDiagram [InnerMostState 0 "" ""] 3 "" [] [0]
+      b = StateDiagram [InnerMostState 0 "" ""] 4 "" [] [0] 
+\end{verbatim}
+
+
+
+
+\subsection{Diagram Structure}
+\label{sec:structure}
+Another aspect that needs to ensure is structure. The first constraint is already mentioned in section\ref{sec:existingCheckers}, which we will not further explain.
+\begin{itemize}
+\item The substates of a state diagram cannot be empty or only contains history, fork and join.
+\end{itemize}
+\begin{itemize}
+\item Outgoing edges from a history node always have an empty transition description.
+\end{itemize}
+\begin{itemize}
+\item Part of reachability: Excluding concurrent composite states and state diagram, all the nodes that are states, final states, history, fork and join, should be designated as a start state or be reached by a connection.
+\end{itemize}
+
+We show some counterexamples. 
+In the example \verb|forCheckHistOutTransition|, the connection between \verb|History 1 Deep| and \verb|InnerMostState  2 "A" ""|  has an non-empty transition string.
+It violates rule 2.
+In the expression \verb|forCheckReachablity|, \verb| InnerMostState 1 "A" ""| is neither a initial state nor reached by other states.So this state is unreachable under our definition of reachability.
+\begin{verbatim}
+forCheckHistOutTransition :: UMLStateDiagram
+forCheckHistOutTransition = StateDiagram [a,b] 1 "" [Connection[1] [2] 
+                            "error"] [1]
+     where
+      a = History 1 Deep
+      b = InnerMostState  2 "A" ""
+
+forCheckReachablity :: UMLStateDiagram
+forCheckReachablity = StateDiagram [a] 1 "" [] []
+  where
+    a = InnerMostState 1 "A" ""
+\end{verbatim}
+
+
+
+
+\subsection{Label Uniqueness}
+\label{sec:representation}
+Since we will assign a number to each component in the diagram, the uniqueness of these identifications of direct substates of a state diagram or composite states is essential.
+
+It is not allowed to use the same labels at the same layer. In the diagram expression \verb|forCheckUniqueness|, \verb|InnerMostState|s have the identical label 1.
+\begin{verbatim}
+forCheckUniqueness :: UMLStateDiagram
+forCheckUniqueness = StateDiagram [a, b] 1 "" [] [1]
+  where
+    a = InnerMostState 1 "A" ""
+    b = InnerMostState 1 "B" "" 
+\end{verbatim}
+
+
+
+\subsection{Name Uniqueness}
+\label{sec:representation}
+Similarly, the criterion of label uniqueness could also be applied to local name uniqueness.
+But additionally, to have a meaningful interpretation of the diagrams from a "user perspective", no state diagram should have the same name as one of its (possibly transitive) substates. 
+An empty name of a state diagram will not be considered here.
+
+For example,in the picture \ref{fig:nameUniq}, the three \verb|C|s conflict because the others are "inside"  the state diagram C.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.50]{Bilder/nameUniq.jpg}
+    \caption{Name Uniqueness}
+    \label{fig:nameUniq}
+\end{figure}
+
+In \verb|forCheckSDNameUniq|,  two state diagrams, one is inside the other, are named with identical string \verb|A|. It will misleading users. 
+Similar in \verb|forCheckSubNameUniq|,  two \verb|InnerMostState|s conflict with each other,  with the same name.
+
+\begin{verbatim}
+forCheckSDNameUniq :: UMLStateDiagram
+forCheckSDNameUniq = StateDiagram [a] 1 "A" [] []
+     where
+      a = StateDiagram  [InnerMostState  1 "B" ""] 1 "A" [] [1]
+
+forCheckSubNameUniq :: UMLStateDiagram
+forCheckSubNameUniq = StateDiagram [a,b] 1 "" [Connection[1] [2] ""] [1]
+     where
+      a = InnerMostState 1 "A" ""
+      b = InnerMostState  2 "A" ""  
+\end{verbatim}
+
+
+
+\subsection{History States}
+\label{sec:representation}
+History nodes should never be reached by states inside their compound state and should only have connections towards their compound state.
+
+We illustrate further by the following example \ref{fig:history}. 
+The transitions from node \verb|A| and node \verb|E| to history are both valid. These two nodes are all inside history's compound state. However, the transitions from history to node \verb|B| and node \verb|F| are illegal because they are towards their compound state.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.5]{Bilder/history.jpg}
+    \caption{History}
+    \label{fig:history}
+\end{figure}
+
+Here are some counterexamples. In \verb|forCheckInEdge|,  \verb|History 1 Deep| is reached by a connection that comes from its compound state. It is illegal.
+In the expression \verb|forCheckOutEdge|, \verb|History 3 Deep| is incorrectly pointing to a state outside its compound state.
+\begin{verbatim}
+forCheckInEdge :: UMLStateDiagram
+forCheckInEdge = StateDiagram [a,b] 1 "" [Connection [2] [1] ""] [2]
+     where
+      a =  History 1 Deep
+      b = InnerMostState  2 "A" ""
+
+forCheckOutEdge :: UMLStateDiagram
+forCheckOutEdge2= StateDiagram [a,b] 1 "" [Connection [1,3] [2] ""
+                  ] [1,3]
+     where
+     a = StateDiagram  [c,d] 1 "" [] [1]
+          where
+           c = InnerMostState  1 "A" ""
+           d = History 3 Deep
+     b = InnerMostState  2 "A" ""
+\end{verbatim}
+
+
+
+\subsection{Final States}
+\label{sec:representation}
+Final states should never have outgoing edges.
+\begin{verbatim}
+forCheckEndState :: UMLStateDiagram
+forCheckEndState = StateDiagram [a,b] 1 "" [Connection[2] [1] ""] [2]
+     where 
+           a = InnerMostState  1 "A" ""
+           b = EndState 2
+\end{verbatim}
+In the counterexample \verb|forCheckEndState|, the final state \verb|EndState 2| has a outgoing edge.
+
+
+
+\subsection{Fork and Join}
+\label{sec:representation}
+For fork and join states, three aspects need to discuss.
+
+\begin{enumerate}
+\item \textbf{the number of ingoing and outgoing edges }
+
+We divide this into two situations.
+If a \verb|Joint| state is designated as a start state, that \verb|Joint| must have more than one outgoing edge and no other ingoing edges. 
+If not, each Joint either has one ingoing edge and over one outgoing edge or has more than one outgoing edge and one ingoing edge.
+
+\item  \textbf{the name of transitions}
+
+ Analogous to the number of edges, we also have two cases. 
+ If a \verb|Joint| state is also a start state, all transition strings of its outgoing connections should be empty.
+ If not, it is not permitted that a \verb|Joint| state is reached by a connection with a non-empty transition string and is also left by a connection with a non-empty transition string.
+ Moreover, all the ingoing edges to the same Joint should have the exact transition string, and all the outgoing edges from the same Joint should have the same transition string.
+\item \textbf{connections to regions }
+
+If several connections leave the same \verb|Joint| node, one of them must go to a distinct region.
+If several connections reach the same \verb|Joint| node, one of them must come from a distinct region.
+\end{enumerate}
+
+We illustrate further with counterexamples.
+\begin{verbatim}
+forCheckMtoOne :: UMLStateDiagram
+forCheckMtoOne = StateDiagram [a,b] 1 "" [Connection[5] [1,1,1] ""] [5]
+      where
+        a = CombineDiagram [e,f] 1
+          where 
+            e = StateDiagram [InnerMostState 1 "A" ""] 1 "" [] []
+            f = StateDiagram [InnerMostState 1 "A" ""] 2 "" [] [1]
+        b = Joint 5
+\end{verbatim}
+In this counterexample \verb|forCheckMtoOne|,the \verb|Joint 5| is also a start state,and should have more than one outgoing edges. However, in this expression, it has only one outgoing edge \verb|Connection[5] [1,1,1] ""|.
+
+\begin{verbatim}
+forCheckTransition :: UMLStateDiagram
+forCheckTransition = StateDiagram [a,b] 1 "" 
+ [Connection[5] [1,1,1] "a",Connection[5] [1,2,1] "b"] [5]
+      where
+        a = CombineDiagram [e,f] 1
+          where 
+            e = StateDiagram [InnerMostState 1 "A" ""] 1 "" [] []
+            f = StateDiagram [InnerMostState 1 "A" ""] 2 "" [] []
+        b = Joint 5
+\end{verbatim}
+In this counterexample \verb|forCheckTransition|,the \verb|Connection[5] [1,1,1] "a"| and \verb|Connection[5] [1,1,1] "a"| is connected with \verb|Joint 5| which is also a start state.
+It is not allowed here to have non-empty and not identical transiton strings of these two connections.
+
+\begin{verbatim}
+forAllgoIntoParallelRegions :: UMLStateDiagram
+forAllgoIntoParallelRegions = StateDiagram [a,b] 1 "" 
+ [Connection[5] [1,1,1] "a",Connection[5] [1,1,2] "a"] [5]
+      where
+        a = CombineDiagram [e,f] 1
+          where 
+            e = StateDiagram [InnerMostState 1 "A" "",
+              InnerMostState 2 "B" ""] 1 "" [] []
+            f = StateDiagram [InnerMostState 1 "A" ""] 2 "" [] [1]
+        b = Joint 5
+\end{verbatim}
+
+In this counterexample \verb|forAllgoIntoParallelRegions|,the \verb|Joint 5| has two outgoing edges connected two states from the same region. 
+
+\begin{verbatim}
+forAllcomeOutOfParallelRegions :: UMLStateDiagram
+forAllcomeOutOfParallelRegions = StateDiagram [a,b] 1 "" 
+ [Connection[1,1,1] [5] "a",Connection[1,1,2] [5] "a",
+    Connection[5] [1,2,1] "a" ] [1,1,2]
+      where
+        a = CombineDiagram [e,f] 1
+          where 
+            e = StateDiagram [InnerMostState 1 "A" "",
+              InnerMostState 2 "B" ""] 1 "" [] [1]
+            f = StateDiagram [InnerMostState 1 "A" ""] 2 "" [] []
+        b = Joint 5
+\end{verbatim}
+
+In this counterexample \verb|forAllcomeOutOfParallelRegions|,the \verb|Joint 5| is reached by two connections come from a identical region.
+
+
+
+
+\subsection{Crossings between regions}
+\label{sec:representation}
+It is not allowed to have a transition that the starting point and the endpoint come from two different regions.
+
+In a counterexample \verb|forCheckCrossings|, two states from two different regions of \verb|CombineDiagram [a,b] 1| are connected.
+\begin{verbatim}
+forCheckCrossings :: UMLStateDiagram 
+forCheckCrossings = StateDiagram [CombineDiagram [a,b] 1] 0 ""
+  [Connection [1,2,0] [1,3,0] ""] [1,2,0]
+    where
+      a = StateDiagram [InnerMostState 0 "" ""] 2 "" [] []
+      b = StateDiagram [InnerMostState 0 "" ""] 3 "" [] []
+\end{verbatim}
+
+
+\subsection{Semantics}
+\label{sec:semantics}
+Except for errors by calling the drawing function, some UML diagrams do not make much sense. 
+Here we have two limits on semantics checking and will explain them with corresponding counterexamples.
+\begin{itemize}
+\item No two connections can leave the same source and have the same label (except from a \verb|Joint| Node).
+\end{itemize}
+\begin{itemize}
+\item The non-\verb|Joint| state, which has more than one outgoing connection, must have a non-empty transition label.
+\end{itemize}
+
+\begin{verbatim}
+forCheckSameConnection :: UMLStateDiagram
+forCheckSameConnection = StateDiagram [a, b] 1 "" 
+ [Connection [1] [2] "a", Connection [1] [2] "a"] [1]
+  where
+    a = InnerMostState 1 "A" ""
+    b = InnerMostState 2 "B" ""
+\end{verbatim}
+In the counterexample \verb|forCheckSameConnection|, \verb|Connection [1] [2] "a"| and \verb|Connection [1] [2] "a"| have the identical source state which is also not a \verb|Joint| node and have the same transition string.
+It is not allowed to have the same string at this condition.
+
+\begin{verbatim}
+forCheckEmptyTran :: UMLStateDiagram
+forCheckEmptyTran = StateDiagram [a, b] 1 "" 
+ [Connection [1] [2] "a", Connection [1] [2] ""] [1]
+  where
+    a = InnerMostState 1 "A" ""
+    b = InnerMostState 2 "B" ""
+\end{verbatim}
+
+Here \verb|Connection [1] [2] "a"| and \verb|Connection [1] [2] ""| have the identical source state which is also not a \verb|Joint| node but \verb|Connection [1] [2] ""| wrongly have an empty string here.
+
+
+
+
+
+
+\section{Structural checking in Haskell}
+\label{sec:concept}
+This section illustrates how the testing properties defined in the previous are implemented as Haskell functions.
+
+\textbf{Diagram Representation}
+
+To verify the outermost layer is a state diagram, the function needs to check if the state at the first layer is a \verb|StateDiagram|. For the following two constraints, we have two parts to transversely check. All the substates of a combine diagram must have over one state diagram and no other constructors, and all the transitions have no empty starting or end point lists.
+
+There are two general rules that the connections between elements must obey.
+\begin{itemize}
+\item The start node and the end node of one connection must be valid.
+\item No connection could start from or end at regions themselves.
+\end{itemize}
+
+As defined in \verb|UMLStateDiagram|,only sequential composite states have connections.
+At first, we get all the start points and endpoints of one sequential composite state.
+Then we check each point list which could refer to one node in deeper level or this layer, by verifying if each element of the list is contained in further substates' label list.
+To prevent connections starting or ending at regions, the last second node of the point list should not be \verb|CombineDiagram| since a region is a \verb|StateDiagram| inside the \verb|CombineDiagram|.
+Then we check the connection points and start points layer by layer that does not violate the above condition.
+
+The initial pseudostate constraints are similar to connections'. So the approaches are also similar.
+\begin{itemize}
+\item The point list must refer to a valid node in the diagram
+\item No initial pseudostates could point to regions themselves
+\end{itemize}
+We verify that each element in one start point list is contained in the further substates' label list.
+And only the composite state has substates, and only the sequential composite state has a \verb|startState| field.
+To check the second rule, from the first element to the last second element of one start point list must be checked that it is not a concurrent composite state.
+
+\textbf{Diagram Structure}
+
+There are three functions to realize the testing of diagram structure.
+In the function \verb|checkSubstateSD|, we transversely check the substates of all the \verb|StateDiagram| in the entire diagram if substates only have \verb|Joint| or \verb|History| states.
+The function \verb|checkHistOutTransition| will verify transversely all the transitions in the connection list of each \verb|StateDiagram| that arrive at a \verb|History| node have empty strings.
+The function \verb|checkReachablity| pulls all the connections to the outermost layer using \verb|globalise| function and collects all the elements that are not \verb|StateDiagram| or \verb|CombineDiagram|.
+Then it also collects the source states of all the connections after globalizing, and all nodes that are the start states represented like at the outermost layer. We denote this list as C here.
+Finally, suppose all the elements in the list of all the elements that are not \verb|StateDiagram| or \verb|CombineDiagram| are elements of the list C. In that case, we could say the expression satisfies reachability.
+
+\textbf{Label Uniqueness}
+
+The identifier of each state at the same layer must be unique.
+We check the direct substates of each state diagram or combine diagrams if two substates have the same label.
+
+\textbf{Name Uniqueness}
+
+If the nodes all belong to the same \verb |StateDiagram|'s or \verb |CombineDiagram|'s substates, we say that these nodes are at the same layer.
+At the same layer, states that have identical names are not acceptable.
+And if deeper substates of one state diagram have identical names as the state diagram, it is also not valid.
+
+We get all direct substates' names of a state diagram or a combined diagram and check for duplicates.
+If there are duplicates, then the diagram violates the same layer uniqueness.
+
+To prevent deeper layer name conflict, the name field of one state diagram needs to be compared to all arbitrarily deep substates' names includes its direct substate's name.
+The name of them could not be equal.
+
+\textbf{History States} 
+
+The idea of checking if a history node is connected with states inside their compound states is to compare two point lists in a connection that starts or ends from/at a \verb |History| node.
+We take the prefix of the other state of the same length as the \verb |History| state. 
+Following this, the function compares if all the elements except the last one of these two lists are identical. 
+If they are the same, we could say the history node points to a state inside its compound states in this transition.
+For outgoing edges of a history node, the function needs to verify if all the elements except the last one of these two lists are non-identical.
+
+\textbf{Final States}
+
+As a final state, it should have no outgoing edges. It also means the start point of all connections should not be a final state. So we need to verify that the \verb|pointFrom| of each connection in each state diagram does not refer to an end state.
+
+The function \verb|isNotEnd| takes an \verb|pointFrom| and \verb|UMLStateDiagram| as inputs.
+Suppose the length of the integer list is longer than one. 
+In that case, the function will find the substate inside the second argument \verb|UMLStateDiagram|'s direct substates with the same label as the first element of the input list 
+and continue to take the tail of the list. 
+The new substate as arguments to call \verb|isConnFromNotEnd| repeatedly until the length of the integer list is one.
+When the length is one, we check if a label of substates of the diagram that is end-state has the same value as the only element in the list.
+If that is not true, this point does not point to the end state.
+
+\textbf{Fork and Join}
+
+The key idea to realize this function is to globalize all the connections/ to the outermost layer using \verb|globlise| function or represent all the elements or start states like in the outermost layer.
+
+To check the number of in/outgoing edges, we will filter all the connections of which the source state is \verb|Joint| state as a list of outgoing edges from \verb|History| 
+and all the transitions of which the target state is \verb|Joint| state as a list of ingoing edges to \verb|History|.
+Moreover, all the \verb|Joint| states that are designated as start states will be collected.
+There are six illegal situations as illustrated in Figure \ref{fig:in/outgoing edges}.
+After that, the list of all \verb|Joint| state that has over one outgoing edge will be compared to the list of all \verb|Joint| state that has over one ingoing edge.
+This is not legal if there is an intersection between these two lists as shown in (1).
+Secondly, It is not valid if the list of the \verb|Joint| states designated as start states intersects with the list of all \verb|Joint| states having ingoing edges.
+As shown in (3), the list of the \verb|Joint| states designated as start states has intersections with the list of all \verb|Joint| states with only one outgoing edge.
+This is also not permitted.
+To avoid circumstance (4), the function will verify if all \verb|Joint| states with no ingoing edges are start states.
+Similarly, the function will check if there are \verb|Joint| states have no outgoing edges to avoid the situation (5).
+In the end, the list of all \verb|Joint| states with only one outgoing edge and the list of all \verb|Joint| states with only one ingoing edge will be evaluated whether there are intersections to avoid the situation (6).
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.5]{Bilder/MtoOne.png}
+    \caption{Illegal in/outgoing edges}
+    \label{fig:in/outgoing edges}
+\end{figure}
+
+In Figure \ref{fig:Transition with illegal strings} there are four invalid situations.
+Two extra functions with two parameters, connection and connection list, are defined to check if all the transitions strings are the same by filtering the connections with the same source state or target state as the first parameter.  
+The function will check if all the elements in the list of connections with a \verb|Joint| as the source state or target state could pass those two extra functions to avoid situations (1), (2).
+We also have to ensure that the list of \verb|Joint| states that have outgoing connections with non-empty strings have no intersections with the list of  \verb|Joint| states that have ingoing connections with non-empty strings as shown in (3).
+Lastly, the start states that are \verb|Joint| states should not show in the list of  \verb|Joint| states that have outgoing connections with non-empty strings.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.5]{Bilder/transitions.png}
+    \caption{Transition with illegal strings}
+    \label{fig:Transition with illegal strings}
+\end{figure}
+
+\textbf{Crossings between regions}
+
+since the crossing problem was found in the process of creating the \verb|localise| and \verb|globalise| functions, those associations between regions will be eliminated after localising. 
+We could compare the number of connections before and after localising. If the quantity is changed, there must have some illegal crossings between regions in the expression.
+
+\textbf{Semantics} 
+
+As an \verb|UMLStateDiagram|, it does not make much sense when those two criteria in section \ref{sec:semantics} are violated.
+
+The strategy to check the first rule is to pull all the connections to the outermost layer of the diagram and filter those connections that do not have a \verb|Joint| node as the source state.
+After that, we verify whether two associations have an identical source state and equal transition string.
+An extra function \verb|checkSameOutTran| takes one connection and the entire connection list without \verb|Joint| states as inputs. 
+Then it filters those connections that have the same start point and the same transition string as the first connection parameter. 
+After that, if the length of the remaining connection list is equal to one, there are no violations when the source state is the same as the first parameter's.
+Hence if all the connections in the list could pass the function \verb|checkSameOutTran|, the entire diagram expression must have satisfied the first rule.
+
+The approach to the second rule is similar to the way shown above. 
+The first step is to pull all the connections to the outermost layer of the diagram and filter those connections that do not have a \verb|Joint| node as the start point.
+An extra function \verb|checkEmptyOutTran| takes one connection and the entire connection list without \verb|Joint| states as inputs. 
+Then it filters those connections that have the same source state.
+After that, if the length of the remaining connection list is equal to one or none of them has an empty transition string, there are no violations when the source state is the same as the first parameter's.
+Hence if all the connections in the list could pass the function \verb|checkEmptyOutTran|, the entire diagram expression must have satisfied the second rule.
+
+
+
+
+
+
+\section{Automatic test case generator }
+\label{sec:generator}
+This section presents an automatic test case generator for  UML state diagram using \verb|QuickCheck|.
+This tester generates random graphs to monitor the UML Diagram drawing tool if there are exceptions.
+
+In our current model, nested combine diagram which means a combine diagram inside another combine diagram will not occur.
+Because it will cause the generator retry hundreds of times to satisfy the constraints which is not ideal for a quick testing and generation.
+We might will improve this model to allow nested combine diagram in the future work.
+Besides, self-edges is also ignored since the drawing tool has a issue with it.Moreover,semantics constraints are achieved by retries in our model,and only part of semantics constraints are specifically defined.
+
+\subsection{randomSD}
+Given is the implementation of \verb|randomSD|, We have some additional limitations on the diagram generating except for satisfying testing properties mentioned in the previous section.
+\begin{itemize}
+\item The depth of the diagram is controlled with a \verb|counter| argument which equals 4. In a branch, when a state diagram is produced, the counter will be reduced by one.
+\end{itemize}
+\begin{itemize}
+\item We set \verb|cdMaxNum| to 1 to narrow the diagram sample down by excluding these with nested composite states. In other words, no composite states will be inside other composite states.
+\end{itemize}
+\begin{itemize}
+\item The usage of the \verb|frequency| function specifies the probability of generating graphs with at least two levels.
+\end{itemize}
+\begin{verbatim}
+randomSD :: Gen (UMLStateDiagram, Int)
+randomSD = do
+  let outermost = True
+      counter = 4 
+      ns = [3 .. 4]
+      alphabet = ["A","B","C","D","E","F","G","H","I","J","K","L",
+       "M","N","O","P","Q","R","S","T","U","V","W","X","Y"]
+      l = 1
+      mustCD = False
+      cdMaxNum = 1 
+  nm <- elements alphabet
+  leastTwoLevels <- frequency [(2,return False),(8,return True)]
+  randomSD' outermost counter cdMaxNum leastTwoLevels ns alphabet (l,
+   nm,mustCD) [] 
+\end{verbatim} 
+The first argument of \verb|randomSD'|, \verb|True|, represents this state diagram is the outermost layer. 
+In \verb|(1,nm,mustCD)|, \verb|nm| is chosen randomly as the name string of the state diagram,
+the Integer 1 represents the label value, and \verb|mustCD| defines whether the substates of state diagram must contain a combine diagram. \verb|[3 .. 4]| is the number choice of substates. 
+The element \verb|alphabet| is the name range for state diagram and \verb|InnerMostState|.
+The empty list defines names that should not be used for substates at an arbitrary depth.
+
+
+
+\subsection{randomSD'}
+\label{subsec:randomSD'}
+As we explained in section\ref{sec:UML state Diagram}, a \verb|StateDiagram| have five arguments: substate,label, name, connection, startState.
+
+Let us decide substate list first. 
+To generate substates, we will map each element of a tuple list to function \verb|randomInnerSD| (see section \ref{subsec:randomInnerSD} ), which has six parameters. 
+The argument \verb|counter| will be reduced by one to control the depth of the entire diagram.
+And the name list that should not be used inside will be added by one more string, the name of the current state diagram. It is used to prevent the naming confusion of states.
+The choice of substates quantity, \verb|cdMaxNum| and name options for the whole graph will remain the same.
+Here we illustrate how the tuple with four essential elements assigned to each substate is generated.
+After arbitrarily choosing the number of substates as n, we will use the shuffle algorithm to generate a random permutated Integer list as labels with length n+1. 
+The number of labels will exceed one because the function will add an extra \verb|combDiagram| substate if some conditions are not satisfied to achieve the necessity of containing a \verb|combDiagram| inside if \verb|mustCD| is True.
+The second parameter of the tuple is the node types list (see the NodeType in \ref{subsec:randomInnerSD} ).
+The combination of types of substates should mainly satisfy four rules :
+\begin{itemize}
+\item The number of history or final states should be less than 2.
+\end{itemize}
+\begin{itemize}
+\item The number of \verb|CombDiagram| and \verb|StateDiagram| should be less than 3 to simplify our diagram model.
+\end{itemize}
+\begin{itemize}
+\item If the generator arbitrarily decides the diagram must contain over two levels and \verb|outermost| is \verb|True|, \verb|CombDiagram| or\verb| StateDiagram| must be an element of substates.
+\end{itemize}
+\begin{itemize}
+\item If all the substates have no states without substates, \verb|Joint| should not be an element of substates.
+Besides, If \verb|cdMaxNum| equals zero, substates contain no \verb|Joint| and no \verb|CombDiagram|.
+If \verb|counter| is greater than zero, all the substates should be states that have no substates.
+\end{itemize}
+If the substate type list contains \verb|Joint| and \verb|cdMaxNum| is not zero, we define a new element \verb|newMustCD| equals True.
+If not, we assign the value \verb|mustCD| to \verb|newMustCD|.
+We will use \verb|newMustCD| to ensure a combine diagram inside substates if \verb|newMustCD| is True.
+There are three situations to discuss.
+\begin{itemize}
+\item If \verb|counter == 0| and  additionally \verb|newMustCD == True|, we must put an extra Comb element to the substate type list.
+\end{itemize}
+\begin{itemize}
+\item If \verb|newMustCD == False|, we have no requirement to contain \verb|Comb| in the \verb|subTypes|, so \verb|subTypes| will remain the same. Moreover, each value in the \verb|mustCD| list will be set to \verb|False| for the recursive calls.
+\end{itemize}
+\begin{itemize}
+\item If \verb|counter > 0| and \verb|newMustCD == True|,  we can randomly choose whether to create a leaf or branch. But there are some constraints:
+\begin{enumerate}
+\item If there is no combine diagrams or no state diagrams in substates, we must put an extra \verb|Comb| element to \verb|subTypes| because we won't have another chance to produce that combine diagram. Then we will set the whole \verb|mustCD| list to False since there is a combine diagram.
+\item If there is combine diagrams in substates, no addition on \verb|subTypes| and the whole \verb|mustCD| list to False.
+\item If there is no combine diagrams but a state diagram, we must ensure that combine diagrams will occur somewhere deeper in the tree. So we flip a coin to choose which state diagram in the substates must contains a combine diagram.
+\end{enumerate}
+\end{itemize}
+After that, we use \verb|zip4| functio to make a list of tuples, each tuple containing elements of four lists occurring at the same position and map them to each \verb|randomInnerSD| call to generate substates list.
+
+Secondly, the start state will be randomly chosen in the range of all the elements inside the current state diagram. But no two start states can point to the same node. All the nodes that have been chosen as start states in deeper levels will be discarded. We also limit the frequency of selecting direct substates and components inside substates with 
+\begin{verbatim}
+frequency 
+    [(2, elements (innerElemNoRegions \\ globalStartsWithoutCurrent))
+       ,(8,elements layerElem)]
+\end{verbatim}
+Lastly, transitions generation will be divided into two situations.
+If this is not at the outermost layer, only components that are not  \verb|Joint| will have connections because we only can satisfy the constraints to  \verb|Joint| nodes at the outermost layer. 
+The selection range of the source state is all the components without type of final states.
+The target state should not be a history node that is a direct substate of the current state diagram and not be an element in a parallel region of the source state. 
+Besides, there is an issue to draw self-edges in the current drawing tool, so we will not contain self-edges in our model.
+Since a natural diagram, connections are most between the same layer, we adjust the probability of choosing direct substates and more inner elements like we did as start states. But if the inner elements list is empty, which means this is the end of this branch, only layer elements are possible.
+We also limit the transition strings that should not be the same as other transitions starting from the same node, and if there is another connection starting from the same node, the string should not be empty.
+Nevertheless, there are some exceptions that we need to regenerate the source state or the target state. The constraints that no connections start and end at two different regions must also be satisfied here.
+\begin{itemize}
+\item If the starting point is history node, the endpoint must be inside the compound states of the starting point, and the transition string should be empty.
+\end{itemize}
+\begin{itemize}
+\item If the endpoint is history node, the starting point must be outside the compound states of the endpoint. If the newly generated starting point is also a history node, the transition string will be reassigned to empty.
+\end{itemize}
+
+
+If this is the outermost layer, we must make relations for all the \verb|Joint| nodes after transitions between \verb|non-Joint| components are arbitrarily produced.
+As we mentioned in the section, a \verb|Joint| node should only have over one outgoing edge and one ingoing edge or above one ingoing edge and one outgoing edge. So firstly, we will randomly choose the number of outgoing edges, either one or two, then decide the number of ingoing edges. But if the \verb|joint| state is also a start state, the number must be two, and no other ingoing edges will be generated.
+The options for states connected to a \verb|Joint| node is the elements under one combine diagram. In the entire diagram, there maybe have several combine diagrams, but we will randomly select one and take their inside components as selection range.
+Moreover, if the number of connections at one side of a \verb|Joint| state is over one, there must be at least one state from a different region of the other.
+Besides, the starting point of connection still should not be a final state, and we eliminate duplicate links with the same source state and target state here.
+Concerning transition strings, we will set the transitions at one side of  \verb|Joint| with the identical string or both empty. If the string is not empty at one side, the other side string must be empty.
+
+Furthermore, since all the connections are arbitrarily produced, we could not ensure that all states are reachable. Extra relations of those unreachable states should be created.
+
+So finally, the connection list is the combination of these three parts. If this is not the outermost layer, the extra connections and \verb|Joint| connections will be empty.
+
+\subsection{randomInnerSD}
+\label{subsec:randomInnerSD}
+We define a datatype \verb|NodeType| to represent the type of states in the UML state diagram.
+Given is the implementation of \verb|randomInnerSD|, we call this function only in \verb|randomSD'| (see section \ref{subsec:randomSD'}) to generate substates.
+
+It has six arguments. 
+The variable \verb|counter| and \verb|cdMaxNum| could control the depth and the number of current composite states in a branch but not be changed in this function only pass them to function \verb|randomCD| or \verb|randomSD'|.
+\verb|ns| and \verb|alphabet| are the number options of substates and name choices for the entire diagram.
+The fifth arguments is a tuple,\verb|(l,t,s,mustCD)| with type\verb| (Int,NodeType,[String],Bool)|. \verb|l| is the label.
+\verb|t|, which is a NodeType indicates the type of states.
+String list s is the names assigned to the states. 
+Only if the node is \verb|Comb| type which represents combine diagrams, the length of the string list will be over one(see section \ref{subsec:randomSD'}).
+We use \verb|mustCD| to tell if a current composite state is a must in this branch.
+\verb|exclude| is the name list that should not be utilized on deeper levels.
+
+According to the value of \verb|t|, the function will return the corresponding type of states.
+For the sequential composite states, the value of outermost will be automated set to False.
+
+\begin{verbatim}
+data NodeType = Hist | End | Inner | Comb | Stat | Join  deriving Eq
+\end{verbatim}
+
+\begin{verbatim}
+randomInnerSD::Int -> Int -> [Int] -> [String] ->
+(Int,NodeType,[String],Bool) -> [String] -> Gen UMLStateDiagram
+randomInnerSD counter cdMaxNum ns alphabet (l,t,s,mustCD) exclude = do
+ let nm = head s
+ case t of 
+  Hist -> 
+   frequency 
+    [(1,return (History l Shallow)),(1,return (History l Deep))]
+  End -> return (EndState l)
+  Inner -> return (InnerMostState l nm "")
+  Comb -> randomCD counter cdMaxNum ns alphabet l s exclude
+  Stat -> 
+   randomSD' False counter cdMaxNum False ns alphabet (l,nm,
+      mustCD) exclude
+  Join -> return (Joint l)
+\end{verbatim}
+
+
+
+
+\subsection{randomCD}
+\label{subsec:randomCD}
+In this section, we present how to generate arbitrarily concurrent composite states. 
+\verb|CombineDiagram| consists of two parameters, an Integer called label and substate.
+
+Firstly, the function randomly decides the number of substates between 2 and 3 and assigns values to the \verb|StateDiagram| generator.
+Because of the constraints in section \ref{sec:representation}, concurrent composite states should only contain sequential composite states, and the number must be over two.
+\verb|cdMaxNum| is reduced by one because we simplify the model not containing nested combine diagrams.
+And the necessity to have combine diagrams in deeper levels will be False. The \verb|exlude| parameter will not be changed since combine diagrams has no name.
+And \verb|outermost| will be False since it is not the outermost layer. 
+The arguments \verb|s| is a name list assigned for substates from the previous layer.
+
+At last, the function returns a combine diagrams with label \verb|l| reserved from the previous \verb|randomSD| call and the produced substate list here.
+\begin{verbatim}
+randomCD :: Int -> Int -> [Int]-> [String] -> Int -> [String] ->
+  [String] -> Gen UMLStateDiagram
+randomCD counter cdMaxNum ns alphabet l s exclude = do
+ n      <- elements [2 .. 3]
+ labels <- shuffle [1..n]
+ let cdMaxNum' = cdMaxNum - 1
+     mustCDs =replicate n False
+     cond   = zip3 labels s mustCDs
+ subs <- mapM 
+   (\x ->
+     randomSD' False counter cdMaxNum' False ns alphabet x exclude) cond
+ return (CombineDiagram subs l)
+\end{verbatim}
+
+

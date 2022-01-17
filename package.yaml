@@ -1,0 +1,49 @@
+name: ba-le-zhang
+extra-source-files: []
+dependencies:
+  - base
+  - bytestring
+  - containers
+  - ilist
+  - diagrams-lib
+  - diagrams-svg
+  - SVGFonts
+  - extra
+  - svg-builder
+  - QuickCheck
+library:
+  source-dirs: src
+  exposed-modules:
+    - Datatype
+    - Example
+    - CounterExample
+    - Checkers
+    - Layout
+    - Generate
+  ghc-options:
+    - -Wall
+    - -Werror
+executables:
+  sampling:
+    main: sampling.hs
+    source-dirs: app
+    dependencies:
+      - ba-le-zhang
+      - pretty-simple
+  drawing:
+    main: drawing.hs
+    source-dirs: app
+    dependencies:
+      - ba-le-zhang
+tests:
+  ba-le-zhang-test:
+    main: Spec.hs
+    source-dirs:
+      - test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - ba-le-zhang
+      - hspec
